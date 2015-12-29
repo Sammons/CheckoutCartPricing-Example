@@ -2,8 +2,9 @@ package sammons
 
 import java.util.UUID
 
+import sammons.checkoutcartpricing.CartType._
 import sammons.checkoutcartpricing._
-import sammons.checkoutcartpricing.CheckoutCartPricingTypes.Cart
+import sammons.checkoutcartpricing.bundlerulesets.FlatRateSavingsRuleSet
 
 object Main extends App {
 
@@ -24,35 +25,24 @@ val testIfCartContainsButterAndBread = (cart: Cart) => {
   cart.get(bread).isDefined && cart.get(margarin).isDefined
 }
 
-val qualifyingCartForBuyOneBreadThenNextMargarinFree = Map[CatalogItem, Int](margarin -> 1, bread -> 1)
-val calculateBreadAndButterSavingsUntilNoLongerApplies: (Cart) => BigDecimal = (cart: Cart) => {
-  if (testIfCartContainsButterAndBread(cart)) {
-    /* note how we subtract the items here so they don't allow infinte savings */
-    val cartToSubtract = Map[CatalogItem, Int](margarin -> 2, bread -> 1)
-    margarin.value + calculateBreadAndButterSavingsUntilNoLongerApplies(CheckoutCartPricingOperations.subtractCarts(cart, cartToSubtract))
-  } else 0
-}
 
-val buyOneBreadMargarinThenNextMargarinFree = new CustomBundle(
-  qualificationMatcher = testIfCartContainsButterAndBread,
-  savingsCalculator = calculateBreadAndButterSavingsUntilNoLongerApplies
-)
   /* here's a flat rate deal that will stack with the custom one */
 
-val flatRateQualifyingCart = Map[CatalogItem, Int](margarin -> 4)
-val buyFourMargarinGetTwoUnitsOff = new FlatRateBundle(flatRateSavings = 2, qualifyingCart = flatRateQualifyingCart)
-
+val flatRateBuyFourQualifyingCart = Map[CatalogItem, Int](margarin -> 4)
+val flatRateBuyTwoQualifyingCart = Map[CatalogItem, Int](margarin -> 2)
+val buyFourMargarinGetTwoUnitsOff = new FlatRateSavingsRuleSet(ruleSetId = "buyFour", subsetCart = flatRateBuyFourQualifyingCart, savings = 2)
+val buyTwoMargarinGetOneUnitOff = new FlatRateSavingsRuleSet(ruleSetId = "buyTwo",subsetCart = flatRateBuyTwoQualifyingCart, savings = 1)
   /* creating a test cart */
 val testCart: Cart = Map[CatalogItem, Int](
   margarin -> 4,
   bread -> 3
 )
 
-  /* initialize the API. Note how we use CheckoutCartPricingImpl - it is recommended to use Guice or something
-   * similar, and bind CheckoutCartPricingImpl to the CheckoutCartPricing trait as the interface */
-  CheckoutCartPricingImpl.initializeCheckoutCartPriceCalculationSystem(catalog.values.toSeq, Seq(buyOneBreadMargarinThenNextMargarinFree, buyFourMargarinGetTwoUnitsOff))
+val checkoutCartPricingSystem = new CheckoutCartPricing(
+catalogItems = catalog.values.toSeq,Seq(buyFourMargarinGetTwoUnitsOff, buyTwoMargarinGetOneUnitOff))
 
   /* calculate cart cost */
-  println(s"cost ${CheckoutCartPricingImpl.calculateCheckoutCartPrice(testCart)}")
+val checkoutCart = checkoutCartPricingSystem.calculateCheapestCheckoutCart(testCart)
+println(s"original cost: ${checkoutCart.cart.price}, new cost: ${checkoutCart.total}, bundles: ${checkoutCart.applicableBundles.map(_.bundleRuleSetId.toString)}")
   /* should be 18, apply buyOneBreadAndMargarin Get the next margarin free twice, and buyFourMargarin get 2 off. */
 }
